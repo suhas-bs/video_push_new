@@ -25,7 +25,11 @@ def upload_instagram_video(access_token, ad_account_id, source_instagram_media_i
         params["partnership_ad_ad_code"] = ad_code
         params["is_partnership_ad"] = True
     r = requests.post(url, params=params, verify=False)
-    return r.json().get("id") if r.status_code == 200 else None
+    d = r.json()
+    if r.status_code == 200 and "id" in d:
+        return d["id"], None
+    err = d.get("error", {})
+    return None, f"advideos {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
 
 def create_ad_creative(access_token, ad_account_id, facebook_page_id, ig_account_id,
                        source_instagram_media_id, ad_code, cta_type,
@@ -39,26 +43,37 @@ def create_ad_creative(access_token, ad_account_id, facebook_page_id, ig_account
         "call_to_action": json.dumps({"type": cta_type,
             "value": {"link": cta_app_install_link, "app_link": cta_app_landing_link}}),
     }
-    if ad_code: params["branded_content"] = json.dumps({"instagram_boost_post_access_token": ad_code})
-    elif source_instagram_media_id: params["source_instagram_media_id"] = source_instagram_media_id
-    else: raise ValueError("ad_code or source_instagram_media_id required")
+    if ad_code:
+        params["branded_content"] = json.dumps({"instagram_boost_post_access_token": ad_code})
+    elif source_instagram_media_id:
+        params["source_instagram_media_id"] = source_instagram_media_id
+    else:
+        raise ValueError("ad_code or source_instagram_media_id required")
     if product_set_id:
         params["degrees_of_freedom_spec"] = json.dumps(
             {"creative_features_spec": {"product_extensions": {"enroll_status": "OPT_IN"}}})
         params["creative_sourcing_spec"] = json.dumps(
             {"associated_product_set_id": str(product_set_id)})
-    for _ in range(2):
+    last_err = "No attempts made"
+    for attempt in range(2):
         r = requests.post(url, params=params, verify=False)
         d = r.json()
-        if r.status_code == 200 and "id" in d: return d["id"]
-    return None
+        if r.status_code == 200 and "id" in d:
+            return d["id"], None
+        err = d.get("error", {})
+        last_err = f"adcreatives attempt {attempt+1} — {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
+    return None, last_err
 
 def create_ad(access_token, ad_account_id, ad_name, adset_id, creative_id):
     url = f"{GRAPH}/v22.0/act_{ad_account_id}/ads"
     params = {"access_token": access_token, "status": "PAUSED", "name": ad_name,
               "adset_id": adset_id, "creative": json.dumps({"creative_id": creative_id})}
     r = requests.post(url, params=params, verify=False)
-    return r.json().get("id") if r.status_code == 200 else None
+    d = r.json()
+    if r.status_code == 200 and "id" in d:
+        return d["id"], None
+    err = d.get("error", {})
+    return None, f"ads {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
 
 def process_row(row, config):
     result = dict(row)
@@ -100,19 +115,19 @@ def process_row(row, config):
 
     if not media_id and not use_eligibility:
         # PATH 2 — ad_code only, skip straight to creative
-        creative_id = create_ad_creative(
+        creative_id, err = create_ad_creative(
             token, acct, fb_page, ig_acct,
             None, ad_code, cta_type, install_link, landing_link, product_set_id
         )
         result["creative_id"] = creative_id
         if not creative_id:
-            result.update({"status": "failed",
-                           "error_message": "Creative creation returned no ID"}); return result
-        published_ad_id = create_ad(token, acct, ad_name, adset_id, creative_id)
+            result.update({"status": "failed", "error_message": err or "Creative creation returned no ID"})
+            return result
+        published_ad_id, err = create_ad(token, acct, ad_name, adset_id, creative_id)
         result["published_ad_id"] = published_ad_id
         if not published_ad_id:
-            result.update({"status": "failed",
-                           "error_message": "Ad creation returned no ID"}); return result
+            result.update({"status": "failed", "error_message": err or "Ad creation returned no ID"})
+            return result
         result["status"] = "success"
         return result
 
@@ -121,27 +136,35 @@ def process_row(row, config):
         elig = fetch_eligibility(token, ig_acct, ad_code=ad_code)
         if "error" in elig:
             result.update({"status": "failed",
-                           "error_message": f"Eligibility: {elig['error']}"}); return result
+                           "error_message": f"Eligibility: {elig['error']}"})
+            return result
         if elig.get("eligibility_errors"):
             result.update({"status": "ineligible",
-                           "error_message": str(elig["eligibility_errors"])}); return result
+                           "error_message": str(elig["eligibility_errors"])})
+            return result
         media_id = elig.get("id")
 
-    video_id = upload_instagram_video(token, acct, media_id, ad_code)
+    # PATH 1 (or PATH 3 after eligibility resolves media_id)
+    video_id, err = upload_instagram_video(token, acct, media_id, ad_code)
     result["video_id"] = video_id
     if not video_id:
-        result.update({"status": "failed", "error_message": "Video upload returned no ID"}); return result
+        result.update({"status": "failed", "error_message": err or "Video upload returned no ID"})
+        return result
 
-    creative_id = create_ad_creative(token, acct, fb_page, ig_acct, media_id, ad_code,
-                                     cta_type, install_link, landing_link, product_set_id)
+    creative_id, err = create_ad_creative(
+        token, acct, fb_page, ig_acct, media_id, ad_code,
+        cta_type, install_link, landing_link, product_set_id
+    )
     result["creative_id"] = creative_id
     if not creative_id:
-        result.update({"status": "failed", "error_message": "Creative creation returned no ID"}); return result
+        result.update({"status": "failed", "error_message": err or "Creative creation returned no ID"})
+        return result
 
-    published_ad_id = create_ad(token, acct, ad_name, adset_id, creative_id)
+    published_ad_id, err = create_ad(token, acct, ad_name, adset_id, creative_id)
     result["published_ad_id"] = published_ad_id
     if not published_ad_id:
-        result.update({"status": "failed", "error_message": "Ad creation returned no ID"}); return result
+        result.update({"status": "failed", "error_message": err or "Ad creation returned no ID"})
+        return result
 
     result["status"] = "success"
     return result
