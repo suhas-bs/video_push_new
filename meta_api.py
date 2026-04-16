@@ -31,11 +31,19 @@ def upload_instagram_video(access_token, ad_account_id, source_instagram_media_i
     err = d.get("error", {})
     return None, f"advideos {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
 
+def _clean_id(val):
+    """Strip accidental float suffix (.0) from numeric ID strings."""
+    import re
+    s = str(val or "").strip()
+    # e.g. "120214339614340319.0" → "120214339614340319"
+    s = re.sub(r'\.0+$', '', s)
+    return s or None
+
 def create_ad_creative(access_token, ad_account_id, facebook_page_id, ig_account_id,
                        source_instagram_media_id, ad_code, cta_type,
                        cta_app_install_link, cta_app_landing_link, product_set_id=None):
     url = f"{GRAPH}/v23.0/act_{ad_account_id}/adcreatives"
-    params = {
+    base_params = {
         "access_token": access_token,
         "object_id": facebook_page_id,
         "facebook_branded_content": json.dumps({"sponsor_page_id": facebook_page_id}),
@@ -44,24 +52,35 @@ def create_ad_creative(access_token, ad_account_id, facebook_page_id, ig_account
             "value": {"link": cta_app_install_link, "app_link": cta_app_landing_link}}),
     }
     if ad_code:
-        params["branded_content"] = json.dumps({"instagram_boost_post_access_token": ad_code})
+        base_params["branded_content"] = json.dumps({"instagram_boost_post_access_token": ad_code})
     elif source_instagram_media_id:
-        params["source_instagram_media_id"] = source_instagram_media_id
+        base_params["source_instagram_media_id"] = source_instagram_media_id
     else:
         raise ValueError("ad_code or source_instagram_media_id required")
-    if product_set_id:
-        params["degrees_of_freedom_spec"] = json.dumps(
+
+    # Build list of param variants to try:
+    # 1st attempt: with product_set_id (if provided and clean)
+    # 2nd attempt: without product_set_id (fallback — ad still creates, just no product tag)
+    clean_psid = _clean_id(product_set_id)
+    attempts = []
+    if clean_psid:
+        with_psid = dict(base_params)
+        with_psid["degrees_of_freedom_spec"] = json.dumps(
             {"creative_features_spec": {"product_extensions": {"enroll_status": "OPT_IN"}}})
-        params["creative_sourcing_spec"] = json.dumps(
-            {"associated_product_set_id": str(product_set_id)})
+        with_psid["creative_sourcing_spec"] = json.dumps(
+            {"associated_product_set_id": clean_psid})
+        attempts.append(("with product_set_id", with_psid))
+    attempts.append(("without product_set_id", base_params))
+
     last_err = "No attempts made"
-    for attempt in range(2):
+    for label, params in attempts:
         r = requests.post(url, params=params, verify=False)
         d = r.json()
         if r.status_code == 200 and "id" in d:
-            return d["id"], None
+            note = "" if label == "with product_set_id" else " (product_set_id skipped — invalid or not linked to account)"
+            return d["id"], note or None
         err = d.get("error", {})
-        last_err = f"adcreatives attempt {attempt+1} — {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
+        last_err = f"adcreatives [{label}] {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
     return None, last_err
 
 def create_ad(access_token, ad_account_id, ad_name, adset_id, creative_id):
@@ -86,8 +105,8 @@ def process_row(row, config):
     install_link   = row.get("cta_app_install_link", "")
     landing_link   = row.get("cta_app_landing_link", "")
     ad_name        = row.get("ad_name", "")
-    adset_id       = row.get("adset_id", "")
-    product_set_id = row.get("product_set_id") or None
+    adset_id       = _clean_id(row.get("adset_id", ""))
+    product_set_id = _clean_id(row.get("product_set_id"))
 
     # ── Media ID / eligibility resolution ────────────────────────────────────
     #
