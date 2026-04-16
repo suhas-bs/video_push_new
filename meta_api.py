@@ -74,12 +74,28 @@ def process_row(row, config):
     adset_id       = row.get("adset_id", "")
     product_set_id = row.get("product_set_id") or None
 
-    elig = fetch_eligibility(token, ig_acct, ad_code=ad_code)
-    if "error" in elig:
-        result.update({"status": "failed", "error_message": f"Eligibility: {elig['error']}"}); return result
-    if elig.get("eligibility_errors"):
-        result.update({"status": "ineligible", "error_message": str(elig["eligibility_errors"])}); return result
-    media_id = elig.get("id")
+    # ── Eligibility / media ID resolution ─────────────────────────────────────
+    # Option A: instagram_media_id column provided → skip eligibility API call
+    #           (use this when branded_content_advertisable_medias is not permitted)
+    # Option B: only ad_code provided → call eligibility API to resolve media ID
+    media_id = str(row.get("instagram_media_id", "")).strip() or None
+
+    if media_id:
+        # Direct path — no eligibility API needed
+        result["eligibility_skipped"] = True
+    else:
+        if not ad_code:
+            result.update({"status": "skipped",
+                           "error_message": "Neither instagram_media_id nor ad_code provided"})
+            return result
+        elig = fetch_eligibility(token, ig_acct, ad_code=ad_code)
+        if "error" in elig:
+            result.update({"status": "failed",
+                           "error_message": f"Eligibility: {elig['error']}"}); return result
+        if elig.get("eligibility_errors"):
+            result.update({"status": "ineligible",
+                           "error_message": str(elig["eligibility_errors"])}); return result
+        media_id = elig.get("id")
 
     video_id = upload_instagram_video(token, acct, media_id, ad_code)
     result["video_id"] = video_id

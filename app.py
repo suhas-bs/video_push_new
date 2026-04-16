@@ -20,10 +20,12 @@ st.set_page_config(page_title="Meta Video Push Tool", page_icon="📹", layout="
 ID_COLS = ["campaign_id", "adset_id", "product_set_id"]   # keep as strings
 
 REQUIRED_COLS = {
-    "creator_name", "ad_code", "cta_type",
+    "creator_name", "cta_type",
     "cta_app_install_link", "cta_app_landing_link",
     "campaign_id", "adset_id", "ad_name", "product_set_id",
 }
+# At least one of these must be present per row
+MEDIA_COLS = {"ad_code", "instagram_media_id"}
 
 STATUS_EMOJI = {
     "pending":    "⏳",
@@ -43,7 +45,9 @@ with st.sidebar:
     ig_account_id    = st.text_input("Instagram Account ID", value="17841467737662719")
     st.divider()
     st.caption("**Required CSV columns**")
-    st.code("creator_name\nad_code\ncta_type\ncta_app_install_link\ncta_app_landing_link\ncampaign_id\nadset_id\nad_name\nproduct_set_id", language=None)
+    st.code("creator_name\ncta_type\ncta_app_install_link\ncta_app_landing_link\ncampaign_id\nadset_id\nad_name\nproduct_set_id", language=None)
+    st.caption("**+  one of these per row:**")
+    st.code("instagram_media_id   ← use if no branded\n                         content permission\nad_code              ← use if you have it", language=None)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -75,6 +79,10 @@ for col in df.select_dtypes(include="object").columns:
 missing = REQUIRED_COLS - set(df.columns)
 if missing:
     st.error(f"Missing columns: `{', '.join(sorted(missing))}`")
+    st.stop()
+
+if not (MEDIA_COLS & set(df.columns)):
+    st.error("CSV must have at least one of: `instagram_media_id` or `ad_code`")
     st.stop()
 
 # Drop rows with bad product_set_id
