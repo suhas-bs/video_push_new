@@ -131,10 +131,11 @@ if not run:
     st.stop()
 
 config = {
-    "access_token":     token,
-    "ad_account_id":    ad_account_id,
-    "facebook_page_id": facebook_page_id,
-    "ig_account_id":    ig_account_id,
+    "access_token":       token,
+    "ad_account_id":      ad_account_id,
+    "facebook_page_id":   facebook_page_id,
+    "ig_account_id":      ig_account_id,
+    "use_eligibility_api": False,   # set True only if your app has branded_content_advertisable_medias permission
 }
 
 rows  = df.to_dict("records")

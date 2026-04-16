@@ -74,20 +74,50 @@ def process_row(row, config):
     adset_id       = row.get("adset_id", "")
     product_set_id = row.get("product_set_id") or None
 
-    # ── Eligibility / media ID resolution ─────────────────────────────────────
-    # Option A: instagram_media_id column provided → skip eligibility API call
-    #           (use this when branded_content_advertisable_medias is not permitted)
-    # Option B: only ad_code provided → call eligibility API to resolve media ID
-    media_id = str(row.get("instagram_media_id", "")).strip() or None
+    # ── Media ID / eligibility resolution ────────────────────────────────────
+    #
+    # Three paths — tried in order:
+    #
+    # PATH 1 · instagram_media_id in CSV
+    #   → skip eligibility API, use the ID directly for upload + creative
+    #
+    # PATH 2 · ad_code only, no instagram_media_id
+    #   → skip eligibility API AND video upload entirely
+    #   → create creative directly with ad_code via branded_content param
+    #   → avoids branded_content_advertisable_medias permission requirement
+    #
+    # PATH 3 · legacy / has full permissions
+    #   → call eligibility API with ad_code to resolve media_id, then full flow
+    #   → only used if config flag "use_eligibility_api" is True
 
-    if media_id:
-        # Direct path — no eligibility API needed
-        result["eligibility_skipped"] = True
-    else:
-        if not ad_code:
-            result.update({"status": "skipped",
-                           "error_message": "Neither instagram_media_id nor ad_code provided"})
-            return result
+    media_id = str(row.get("instagram_media_id", "")).strip() or None
+    use_eligibility = config.get("use_eligibility_api", False)
+
+    if not media_id and not ad_code:
+        result.update({"status": "skipped",
+                       "error_message": "Neither instagram_media_id nor ad_code provided"})
+        return result
+
+    if not media_id and not use_eligibility:
+        # PATH 2 — ad_code only, skip straight to creative
+        creative_id = create_ad_creative(
+            token, acct, fb_page, ig_acct,
+            None, ad_code, cta_type, install_link, landing_link, product_set_id
+        )
+        result["creative_id"] = creative_id
+        if not creative_id:
+            result.update({"status": "failed",
+                           "error_message": "Creative creation returned no ID"}); return result
+        published_ad_id = create_ad(token, acct, ad_name, adset_id, creative_id)
+        result["published_ad_id"] = published_ad_id
+        if not published_ad_id:
+            result.update({"status": "failed",
+                           "error_message": "Ad creation returned no ID"}); return result
+        result["status"] = "success"
+        return result
+
+    if not media_id and use_eligibility:
+        # PATH 3 — legacy full flow via eligibility API
         elig = fetch_eligibility(token, ig_acct, ad_code=ad_code)
         if "error" in elig:
             result.update({"status": "failed",
