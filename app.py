@@ -9,9 +9,10 @@ Flow:
 """
 
 import io
+import requests
 import pandas as pd
 import streamlit as st
-from meta_api import process_row
+from meta_api import process_row, get_ig_accounts
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Meta Video Push Tool", page_icon="📹", layout="wide")
@@ -52,6 +53,56 @@ with st.sidebar:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 st.title("📹 Meta Video Push Tool")
+
+# ────────────────────────────────────────────────────────────────────────────
+# ACCOUNT VERIFIER  (run before uploading CSV to confirm IDs are correct)
+# ────────────────────────────────────────────────────────────────────────────
+with st.expander("🔍 Verify Account Config (run this first)", expanded=False):
+    st.caption("Enter your token below and click Verify to confirm which Instagram accounts Meta can see.")
+    verify_token = st.text_input("Token for verification", type="password", key="verify_token")
+    if st.button("Verify Accounts"):
+        if not verify_token:
+            st.warning("Enter a token first.")
+        else:
+            import urllib3; urllib3.disable_warnings()
+            GRAPH = "https://graph.facebook.com"
+
+            # Check token
+            me = requests.get(f"{GRAPH}/v23.0/me",
+                              params={"access_token": verify_token, "fields": "id,name"},
+                              verify=False)
+            if me.status_code != 200:
+                st.error(f"Token invalid: {me.json()}")
+            else:
+                st.success(f"Token OK — logged in as: {me.json().get('name')} ({me.json().get('id')})")
+
+                # IG accounts via page
+                pg = requests.get(f"{GRAPH}/v23.0/{facebook_page_id}",
+                                  params={"access_token": verify_token,
+                                          "fields": "name,instagram_business_account"},
+                                  verify=False).json()
+                st.write("**Facebook Page:**", pg.get("name", "—"))
+                ig_from_page = pg.get("instagram_business_account", {}).get("id")
+                st.write("**IG account linked to page:**", ig_from_page or "❌ None found")
+
+                # IG accounts via ad account
+                aa = requests.get(f"{GRAPH}/v23.0/act_{ad_account_id}",
+                                  params={"access_token": verify_token,
+                                          "fields": "name,instagram_accounts{id,name,username}"},
+                                  verify=False).json()
+                st.write("**Ad Account:**", aa.get("name", "—"))
+                ig_from_aa = aa.get("instagram_accounts", {}).get("data", [])
+                if ig_from_aa:
+                    st.write("**IG accounts linked to ad account:**")
+                    for a in ig_from_aa:
+                        st.code(f"ID: {a.get('id')}  |  @{a.get('username','?')}  |  {a.get('name','')}")
+                else:
+                    st.write("**IG accounts linked to ad account:** ❌ None found")
+
+                if not ig_from_page and not ig_from_aa:
+                    st.error("⛔ No Instagram accounts found. Go to Meta Business Manager → Business Settings → Instagram Accounts and connect your IG account to the page/ad account.")
+                else:
+                    st.info("Copy the correct IG account ID above and paste it into the 'Instagram Account ID' field in the sidebar.")
 
 # ────────────────────────────────────────────────────────────────────────────
 # STEP 1 — Upload CSV
