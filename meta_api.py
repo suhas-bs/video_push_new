@@ -13,6 +13,24 @@ def _clean_id(val):
     return s or None
 
 
+def get_page_ig_account(access_token, facebook_page_id):
+    """
+    Fetch the Instagram business account ID linked to a Facebook page.
+    Returns the IG account ID string, or None with an error message.
+    """
+    url = f"{GRAPH}/v23.0/{facebook_page_id}"
+    r = requests.get(url, params={
+        "access_token": access_token,
+        "fields": "instagram_business_account",
+    }, verify=False)
+    d = r.json()
+    if r.status_code == 200:
+        ig = d.get("instagram_business_account", {})
+        return ig.get("id"), None
+    err = d.get("error", {})
+    return None, f"{r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
+
+
 def fetch_eligibility(access_token, ig_account_id, ad_code=None, permalinks=None):
     url = f"{GRAPH}/v22.0/{ig_account_id}/branded_content_advertisable_medias"
     params = {"access_token": access_token,
@@ -43,7 +61,7 @@ def upload_instagram_video(access_token, ad_account_id, source_instagram_media_i
 
 
 def _post_creative(url, params):
-    """POST to adcreatives, return (creative_id, error_string)."""
+    """POST to adcreatives endpoint, return (creative_id, error_string)."""
     r = requests.post(url, params=params, verify=False)
     d = r.json()
     if r.status_code == 200 and "id" in d:
@@ -54,87 +72,68 @@ def _post_creative(url, params):
 
 def create_ad_creative(access_token, ad_account_id, facebook_page_id, ig_account_id,
                        source_instagram_media_id, ad_code, cta_type,
-                       cta_app_install_link, cta_app_landing_link, product_set_id=None):
+                       cta_app_install_link, cta_app_landing_link):
     """
-    Try multiple adcreatives payload structures in order until one works.
-    Returns (creative_id, note_or_none) or (None, combined_error_string).
+    Try multiple adcreatives payload structures until one succeeds.
+    product_set_id removed — it requires catalog linkage that's separate from ad creation.
+    Returns (creative_id, None) on success or (None, combined_error_string).
     """
-    url  = f"{GRAPH}/v23.0/act_{ad_account_id}/adcreatives"
-    cta  = json.dumps({"type": cta_type,
-                       "value": {"link": cta_app_install_link,
-                                 "app_link": cta_app_landing_link}})
-    psid = _clean_id(product_set_id)
+    url = f"{GRAPH}/v23.0/act_{ad_account_id}/adcreatives"
+    cta = json.dumps({
+        "type": cta_type,
+        "value": {"link": cta_app_install_link, "app_link": cta_app_landing_link},
+    })
 
-    def with_psid(base):
-        """Return copy of base params with product_set_id fields added."""
-        p = dict(base)
-        p["degrees_of_freedom_spec"] = json.dumps(
-            {"creative_features_spec": {"product_extensions": {"enroll_status": "OPT_IN"}}})
-        p["creative_sourcing_spec"] = json.dumps({"associated_product_set_id": psid})
-        return p
-
-    # ── Build attempt list ────────────────────────────────────────────────────
     attempts = []   # list of (label, params_dict)
 
     if ad_code:
         # ── STRUCTURE A ──────────────────────────────────────────────────────
-        # instagram_actor_id + instagram_boost_post_access_token (top-level)
-        # This is the standard Meta partnership-ad structure.
-        a = {
-            "access_token":                       access_token,
-            "instagram_actor_id":                 ig_account_id,
-            "instagram_boost_post_access_token":  ad_code,
-            "call_to_action":                     cta,
-        }
-        if psid: attempts.append(("A+psid", with_psid(a)))
-        attempts.append(("A",      a))
+        # Standard Meta partnership ad structure:
+        # instagram_actor_id (brand IG) + instagram_boost_post_access_token (ad code)
+        attempts.append(("A", {
+            "access_token":                      access_token,
+            "instagram_actor_id":                ig_account_id,
+            "instagram_boost_post_access_token": ad_code,
+            "call_to_action":                    cta,
+        }))
 
         # ── STRUCTURE B ──────────────────────────────────────────────────────
-        # object_story_spec with instagram_actor_id + link_data containing
-        # instagram_boost_post_access_token (nested inside link_data)
-        b_link = {
-            "instagram_boost_post_access_token": ad_code,
-            "call_to_action": {"type": cta_type,
-                               "value": {"link": cta_app_install_link,
-                                         "app_link": cta_app_landing_link}},
-        }
-        b = {
-            "access_token":       access_token,
-            "object_story_spec":  json.dumps({
+        # object_story_spec variant — some API versions prefer this nesting
+        attempts.append(("B", {
+            "access_token": access_token,
+            "object_story_spec": json.dumps({
                 "instagram_actor_id": ig_account_id,
-                "link_data":          b_link,
+                "link_data": {
+                    "instagram_boost_post_access_token": ad_code,
+                    "call_to_action": {
+                        "type": cta_type,
+                        "value": {"link": cta_app_install_link, "app_link": cta_app_landing_link},
+                    },
+                },
             }),
-        }
-        if psid: attempts.append(("B+psid", with_psid(b)))
-        attempts.append(("B",      b))
+        }))
 
         # ── STRUCTURE C ──────────────────────────────────────────────────────
-        # Legacy: object_id + branded_content nested + explicit sponsor fields
-        c = {
+        # Page-object approach with explicit branded_content sponsor fields
+        attempts.append(("C", {
             "access_token":              access_token,
             "object_id":                 facebook_page_id,
             "facebook_branded_content":  json.dumps({"sponsor_page_id": facebook_page_id}),
             "instagram_branded_content": json.dumps({"sponsor_id": ig_account_id}),
             "branded_content":           json.dumps({"instagram_boost_post_access_token": ad_code}),
             "call_to_action":            cta,
-        }
-        if psid: attempts.append(("C+psid", with_psid(c)))
-        attempts.append(("C",      c))
+        }))
 
     elif source_instagram_media_id:
-        # ── STRUCTURE D — media ID path ──────────────────────────────────────
-        d_base = {
+        attempts.append(("D", {
             "access_token":              access_token,
             "instagram_actor_id":        ig_account_id,
             "source_instagram_media_id": source_instagram_media_id,
             "call_to_action":            cta,
-        }
-        if psid: attempts.append(("D+psid", with_psid(d_base)))
-        attempts.append(("D",      d_base))
+        }))
     else:
         raise ValueError("ad_code or source_instagram_media_id required")
 
-    # ── Run attempts ─────────────────────────────────────────────────────────
     errors = []
     for label, params in attempts:
         cid, err = _post_creative(url, params)
@@ -167,10 +166,18 @@ def process_row(row, config):
     result.update({"video_id": None, "creative_id": None,
                    "published_ad_id": None, "status": "skipped", "error_message": ""})
 
-    token    = config["access_token"]
-    acct     = _clean_id(config["ad_account_id"])
-    fb_page  = config["facebook_page_id"]
-    ig_acct  = config["ig_account_id"]
+    token   = config["access_token"]
+    acct    = _clean_id(config["ad_account_id"])
+    fb_page = config["facebook_page_id"]
+    ig_acct = config["ig_account_id"]   # may be overridden below
+
+    # ── Auto-resolve the correct IG account from the Facebook page ────────────
+    # The configured ig_account_id can easily be wrong/stale.
+    # Fetching it from the page at runtime is more reliable.
+    fetched_ig, fetch_err = get_page_ig_account(token, fb_page)
+    if fetched_ig:
+        ig_acct = fetched_ig     # use the page-linked IG account
+    # If fetch fails we fall back to whatever was configured in the sidebar
 
     ad_code        = str(row.get("ad_code", "")).strip() or None
     cta_type       = str(row.get("cta_type", "SHOP_NOW")).strip()
@@ -178,7 +185,6 @@ def process_row(row, config):
     landing_link   = str(row.get("cta_app_landing_link", "")).strip()
     ad_name        = str(row.get("ad_name", "")).strip()
     adset_id       = _clean_id(row.get("adset_id", ""))
-    product_set_id = _clean_id(row.get("product_set_id"))
     media_id       = _clean_id(row.get("instagram_media_id", ""))
 
     use_eligibility = config.get("use_eligibility_api", False)
@@ -192,7 +198,7 @@ def process_row(row, config):
     if not media_id and not use_eligibility:
         creative_id, err = create_ad_creative(
             token, acct, fb_page, ig_acct,
-            None, ad_code, cta_type, install_link, landing_link, product_set_id
+            None, ad_code, cta_type, install_link, landing_link
         )
         result["creative_id"] = creative_id
         if not creative_id:
@@ -233,7 +239,7 @@ def process_row(row, config):
 
     creative_id, err = create_ad_creative(
         token, acct, fb_page, ig_acct, media_id, ad_code,
-        cta_type, install_link, landing_link, product_set_id
+        cta_type, install_link, landing_link
     )
     result["creative_id"] = creative_id
     if not creative_id:
