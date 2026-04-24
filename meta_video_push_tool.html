@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Meta Video Push Tool — Flipkart Minutes</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f8; color: #1a1a2e; min-height: 100vh; }
+
+    /* ── Header ── */
+    header { background: linear-gradient(135deg, #1877f2 0%, #0a52c4 100%); color: white; padding: 56px 24px 48px; text-align: center; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3); border-radius: 20px; padding: 5px 16px; font-size: 12px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; margin-bottom: 20px; }
+    header h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: 12px; letter-spacing: -.5px; }
+    header p { font-size: 1.05rem; opacity: .88; max-width: 520px; margin: 0 auto 32px; line-height: 1.6; }
+    .cta-btn { display: inline-flex; align-items: center; gap: 10px; background: white; color: #1877f2; font-weight: 700; font-size: 1rem; padding: 15px 36px; border-radius: 10px; text-decoration: none; box-shadow: 0 6px 20px rgba(0,0,0,.2); transition: transform .15s, box-shadow .15s; }
+    .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,.25); }
+    .cta-btn svg { width: 20px; height: 20px; }
+
+    /* ── Layout ── */
+    main { max-width: 900px; margin: 0 auto; padding: 52px 24px 72px; }
+    .section-label { font-size: .78rem; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #1877f2; text-align: center; margin-bottom: 10px; }
+    .section-title { font-size: 1.55rem; font-weight: 800; text-align: center; margin-bottom: 32px; color: #111; }
+
+    /* ── Steps ── */
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 52px; }
+    .step { background: white; border-radius: 14px; padding: 26px 20px 22px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.07); position: relative; }
+    .step-num { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; background: #1877f2; color: white; font-size: 14px; font-weight: 800; border-radius: 50%; margin-bottom: 14px; }
+    .step-icon { font-size: 1.6rem; margin-bottom: 10px; display: block; }
+    .step h3 { font-size: .95rem; font-weight: 700; margin-bottom: 6px; }
+    .step p { font-size: .82rem; color: #666; line-height: 1.55; }
+    .step-connector { display: none; }
+
+    /* ── Cards ── */
+    .card { background: white; border-radius: 14px; padding: 28px 30px; box-shadow: 0 2px 12px rgba(0,0,0,.07); margin-bottom: 20px; }
+    .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .card-header .icon { font-size: 1.3rem; }
+    .card-header h2 { font-size: 1.05rem; font-weight: 700; color: #111; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th { background: #f0f4ff; color: #1877f2; font-weight: 700; padding: 10px 14px; text-align: left; border-bottom: 2px solid #d6e4ff; font-size: .8rem; text-transform: uppercase; letter-spacing: .5px; }
+    td { padding: 10px 14px; border-bottom: 1px solid #f2f2f2; color: #333; vertical-align: top; line-height: 1.5; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbff; }
+    code { background: #eef2ff; color: #3b5bdb; font-family: "SF Mono", "Fira Code", monospace; font-size: .8rem; padding: 2px 7px; border-radius: 5px; white-space: nowrap; }
+    .tag { display: inline-block; background: #fff3cd; color: #856404; font-size: .72rem; padding: 2px 8px; border-radius: 5px; font-weight: 600; margin-left: 4px; vertical-align: middle; }
+    .req { display: inline-block; background: #fde8e8; color: #c0392b; font-size: .72rem; padding: 2px 8px; border-radius: 5px; font-weight: 600; margin-left: 4px; vertical-align: middle; }
+    .opt { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: .72rem; padding: 2px 8px; border-radius: 5px; font-weight: 600; margin-left: 4px; vertical-align: middle; }
+
+    /* ── Callout ── */
+    .callout { border-radius: 10px; padding: 16px 20px; font-size: .875rem; line-height: 1.7; margin-top: 18px; }
+    .callout.yellow { background: #fffbeb; border: 1px solid #fde68a; color: #78350f; }
+    .callout.blue { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .callout strong { font-weight: 700; }
+
+    /* ── Status chips ── */
+    .statuses { display: flex; flex-wrap: wrap; gap: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 24px; padding: 7px 16px; font-size: .85rem; }
+    .chip strong { font-weight: 600; }
+
+    /* ── Footer ── */
+    footer { text-align: center; padding: 28px 24px; font-size: .82rem; color: #999; border-top: 1px solid #e8e8e8; background: white; }
+    footer a { color: #1877f2; text-decoration: none; font-weight: 600; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      header h1 { font-size: 1.7rem; }
+      .card { padding: 20px 18px; }
+      th, td { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="badge">📹 Flipkart Minutes &nbsp;·&nbsp; Internal Tool</div>
+  <h1>Meta Video Push Tool</h1>
+  <p>Upload your creator CSV, paste your access token, and push ads directly into Meta — row by row, with live status.</p>
+  <a class="cta-btn" href="https://fkpchqdk37s5qchxbjeeux.streamlit.app/" target="_blank">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    Open the Tool
+  </a>
+</header>
+
+<main>
+
+  <p class="section-label">Workflow</p>
+  <p class="section-title">Four steps to push</p>
+
+  <div class="steps">
+    <div class="step">
+      <span class="step-icon">📄</span>
+      <div class="step-num">1</div>
+      <h3>Upload CSV</h3>
+      <p>Drop your creator CSV. Columns are validated and a preview loads instantly.</p>
+    </div>
+    <div class="step">
+      <span class="step-icon">🔑</span>
+      <div class="step-num">2</div>
+      <h3>Paste Token</h3>
+      <p>Enter your Meta access token. Used for this session only — never stored.</p>
+    </div>
+    <div class="step">
+      <span class="step-icon">🚀</span>
+      <div class="step-num">3</div>
+      <h3>Push to Meta</h3>
+      <p>Click <strong>Push Videos to Meta</strong>. Watch live status as each ad is created.</p>
+    </div>
+    <div class="step">
+      <span class="step-icon">⬇️</span>
+      <div class="step-num">4</div>
+      <h3>Download Results</h3>
+      <p>Get a results CSV with ad IDs, creative IDs, and error details for any failures.</p>
+    </div>
+  </div>
+
+  <!-- CSV columns -->
+  <div class="card">
+    <div class="card-header">
+      <span class="icon">📋</span>
+      <h2>Required CSV columns</h2>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Column</th><th>Description</th><th>Example</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>creator_name</code> <span class="req">required</span></td><td>Creator's display name</td><td>Neha Sikka</td></tr>
+        <tr><td><code>ad_code</code> <span class="req">required</span></td><td>Instagram partnership ad code from creator</td><td>Q9jTBBNK3Dp…</td></tr>
+        <tr><td><code>cta_type</code> <span class="req">required</span></td><td>Call-to-action button type</td><td>SHOP_NOW</td></tr>
+        <tr><td><code>cta_app_install_link</code> <span class="req">required</span></td><td>Play Store / App Store URL</td><td>https://play.google.com/…</td></tr>
+        <tr><td><code>cta_app_landing_link</code> <span class="req">required</span></td><td>Deep-link landing URL shown to users</td><td>https://www.flipkart.com/…</td></tr>
+        <tr><td><code>campaign_id</code> <span class="req">required</span> <span class="tag">text</span></td><td>Meta Campaign ID — must stay as plain text</td><td>120235765475890786</td></tr>
+        <tr><td><code>adset_id</code> <span class="req">required</span> <span class="tag">text</span></td><td>Meta Ad Set ID — must stay as plain text</td><td>120241898653850786</td></tr>
+        <tr><td><code>ad_name</code> <span class="req">required</span></td><td>Display name for the new ad in Meta</td><td>Neha Sikka_BAU_15April</td></tr>
+        <tr><td><code>product_set_id</code> <span class="req">required</span> <span class="tag">text</span></td><td>Catalogue product set ID</td><td>1494098392274756</td></tr>
+        <tr><td><code>instagram_media_id</code> <span class="opt">optional</span></td><td>Use instead of ad_code if you have the numeric media ID</td><td>18023456789012345</td></tr>
+      </tbody>
+    </table>
+    <div class="callout yellow">
+      <strong>⚠️ Prevent ID precision loss when exporting from Google Sheets</strong><br/>
+      Before downloading as CSV, select the <code>campaign_id</code>, <code>adset_id</code>, and <code>product_set_id</code> columns
+      → <strong>Format → Number → Plain text</strong>. This stops Sheets from rounding 18-digit numbers.
+    </div>
+  </div>
+
+  <!-- Results CSV -->
+  <div class="card">
+    <div class="card-header">
+      <span class="icon">📊</span>
+      <h2>What's in the results CSV</h2>
+    </div>
+    <table>
+      <thead><tr><th>Column</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>creator_name</code></td><td>Carried from input</td></tr>
+        <tr><td><code>ad_name</code></td><td>Carried from input</td></tr>
+        <tr><td><code>published_ad_id</code></td><td>New Meta Ad ID — use this to find the ad in Ads Manager</td></tr>
+        <tr><td><code>creative_id</code></td><td>Meta Ad Creative ID</td></tr>
+        <tr><td><code>video_id</code></td><td>Uploaded video asset ID (if applicable)</td></tr>
+        <tr><td><code>status</code></td><td>success / failed / ineligible / skipped</td></tr>
+        <tr><td><code>error_message</code></td><td>Exact API error if failed — blank on success</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Status legend -->
+  <div class="card">
+    <div class="card-header">
+      <span class="icon">🔍</span>
+      <h2>Status legend</h2>
+    </div>
+    <div class="statuses">
+      <span class="chip">✅ <strong>Success</strong> — Ad created (PAUSED in Meta)</span>
+      <span class="chip">❌ <strong>Failed</strong> — API returned an error (see error_message)</span>
+      <span class="chip">⚠️ <strong>Ineligible</strong> — Post not eligible for partnership ad</span>
+      <span class="chip">⏭️ <strong>Skipped</strong> — Row had missing or invalid data</span>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div class="card">
+    <div class="card-header">
+      <span class="icon">💡</span>
+      <h2>Notes</h2>
+    </div>
+    <table>
+      <tbody>
+        <tr><td style="width:140px"><strong>Token safety</strong></td><td>Your access token is used only for the session and is never stored, logged, or shared.</td></tr>
+        <tr><td><strong>Account IDs</strong></td><td>The sidebar has Flipkart Minutes defaults pre-filled. Any team member can edit them without touching the code.</td></tr>
+        <tr><td><strong>Ad status</strong></td><td>All ads are created in <strong>PAUSED</strong> state. Review in Meta Ads Manager before activating.</td></tr>
+        <tr><td><strong>Re-runs</strong></td><td>Filter failed rows from the results CSV, fix the issue, re-export, and re-upload — only failed rows will be retried.</td></tr>
+        <tr><td><strong>Verify config</strong></td><td>Expand <em>"🔍 Verify Account Config"</em> at the top of the tool before running to confirm your Meta account linkage is correct.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout blue">
+      <strong>First time using the tool?</strong> Expand the <em>Verify Account Config</em> section, paste your token, and click Verify — it will show you which Instagram account is linked to your Facebook page and confirm everything is set up correctly before you push.
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Internal tool &nbsp;·&nbsp; Flipkart Minutes Video API &nbsp;&nbsp;
+  <a href="https://fkpchqdk37s5qchxbjeeux.streamlit.app/" target="_blank">Open Tool ↗</a>
+</footer>
+
+</body>
+</html>
