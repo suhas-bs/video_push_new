@@ -47,7 +47,14 @@ with st.sidebar:
     st.divider()
     st.caption("**Required CSV columns**")
     st.code("creator_name\ncta_type\ncta_app_install_link\ncta_app_landing_link\ncampaign_id\nadset_id\nad_name\nproduct_set_id\nad_code", language=None)
-    st.caption("Flow: `ad_code` → eligibility → video upload → creative → ad (PAUSED)")
+    st.divider()
+    st.caption("**🔑 Strongly recommended**")
+    st.code("creator_ig_account_id", language=None)
+    st.caption(
+        "Each creator's **numeric** Instagram account ID (e.g. `17841467737662719`). "
+        "Without this, the tool needs a special-permission token. "
+        "Creators can find their ID in Instagram → Settings → Account → Instagram ID."
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
