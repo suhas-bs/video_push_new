@@ -92,7 +92,11 @@ def _create_ad(token, ad_account_id, ad_name, adset_id, creative_id):
     if r.status_code == 200 and "id" in d:
         return d["id"], None
     err = d.get("error", {})
-    return None, f"ads {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
+    msg = f"ads {r.status_code}: [{err.get('code','?')}] {err.get('message', r.text)}"
+    for k in ("error_user_msg", "error_user_title"):
+        if err.get(k):
+            msg += f" | {err[k]}"
+    return None, msg
 
 
 def _try_creative(label, token, ad_account_id, params):
@@ -261,29 +265,39 @@ def process_row(row, config):
 
     # ══════════════════════════════════════════════════════════════════════════
     # PATH 3 — branded_content without eligibility (last resort)
-    #   Also needs instagram_branded_content_ads perm — will fail without it,
-    #   but we try anyway in case permissions differ per endpoint.
+    #   Skip creative creation if we already have a creative_id from PATH 2
+    #   (avoids orphaned creatives — the ad creation is the bottleneck, not the creative)
     # ══════════════════════════════════════════════════════════════════════════
-    params = {
-        "name":                         ad_name,
-        "object_id":                    fb_page,
-        "facebook_branded_content":     json.dumps({"sponsor_page_id": int(fb_page)}),
-        "instagram_branded_content":    json.dumps({"sponsor_id": int(ig_acct)}),
-        "branded_content":              json.dumps({"instagram_boost_post_access_token": ad_code}),
-        "call_to_action":               cta,
-        **pp,
-    }
-    cid, err = _try_creative("direct-branded", token, acct, params)
-    if cid:
-        result["creative_id"] = cid
-        pub_id, err2 = _create_ad(token, acct, ad_name, adset_id, cid)
+    existing_cid = result.get("creative_id")
+    if existing_cid:
+        # Re-try ad creation with the creative we already made
+        pub_id, err2 = _create_ad(token, acct, ad_name, adset_id, existing_cid)
         result["published_ad_id"] = pub_id
         if pub_id:
             result["status"] = "success"
             return result
-        all_errors.append(f"Ad: {err2}")
+        all_errors.append(f"Ad[retry-existing-creative]: {err2}")
     else:
-        all_errors.append(err)
+        params = {
+            "name":                         ad_name,
+            "object_id":                    fb_page,
+            "facebook_branded_content":     json.dumps({"sponsor_page_id": int(fb_page)}),
+            "instagram_branded_content":    json.dumps({"sponsor_id": int(ig_acct)}),
+            "branded_content":              json.dumps({"instagram_boost_post_access_token": ad_code}),
+            "call_to_action":               cta,
+            **pp,
+        }
+        cid, err = _try_creative("direct-branded", token, acct, params)
+        if cid:
+            result["creative_id"] = cid
+            pub_id, err2 = _create_ad(token, acct, ad_name, adset_id, cid)
+            result["published_ad_id"] = pub_id
+            if pub_id:
+                result["status"] = "success"
+                return result
+            all_errors.append(f"Ad: {err2}")
+        else:
+            all_errors.append(err)
 
     # All paths failed
     hint = ""
