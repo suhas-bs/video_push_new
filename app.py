@@ -48,7 +48,14 @@ with st.sidebar:
     st.caption("**Required CSV columns**")
     st.code("creator_name\ncta_type\ncta_app_install_link\ncta_app_landing_link\ncampaign_id\nadset_id\nad_name\nproduct_set_id", language=None)
     st.caption("**+  one of these per row:**")
-    st.code("instagram_media_id   ← use if no branded\n                         content permission\nad_code              ← use if you have it", language=None)
+    st.code("instagram_media_id\nad_code", language=None)
+    st.divider()
+    st.caption("**Optional but strongly recommended**")
+    st.code("creator_ig_account_id", language=None)
+    st.caption(
+        "Each creator's own Instagram account ID (numeric). "
+        "Without it, partnership ads fail for creators whose posts aren't on the brand IG."
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
