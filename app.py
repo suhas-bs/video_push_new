@@ -58,7 +58,10 @@ st.title("📹 Meta Video Push Tool")
 # ────────────────────────────────────────────────────────────────────────────
 with st.expander("🔍 Verify Account Config (run this first)", expanded=False):
     st.caption("Enter your token below and click Verify to confirm which Instagram accounts Meta can see.")
-    verify_token = st.text_input("Token for verification", type="password", key="verify_token")
+    verify_token = st.text_area("Token for verification", key="verify_token", height=80,
+                                placeholder="Paste your Meta access token here…",
+                                help="Use text area so you can confirm the full token pasted correctly.")
+    verify_token = verify_token.strip()
     if st.button("Verify Accounts"):
         if not verify_token:
             st.warning("Enter a token first.")
@@ -153,18 +156,19 @@ with st.expander("Preview data", expanded=True):
 st.divider()
 st.subheader("Step 2 — Enter Meta Access Token")
 
-token = st.text_input(
+token = st.text_area(
     "Access Token",
-    type="password",
+    height=80,
     placeholder="Paste your Meta access token here…",
     label_visibility="collapsed",
 )
+token = token.strip()
 
 if not token:
     st.info("🔑 Enter your Meta access token to continue.")
     st.stop()
 
-st.success("✅ Token received.")
+st.success(f"✅ Token received ({len(token)} chars).")
 
 
 # ────────────────────────────────────────────────────────────────────────────
