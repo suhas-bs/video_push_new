@@ -125,8 +125,13 @@ if not uploaded:
     st.stop()
 
 # Parse — force ID columns to string to prevent 18-digit float conversion
+# Try UTF-8 first, fall back to latin-1 (covers Excel/Windows-saved CSVs)
 try:
-    df = pd.read_csv(uploaded, dtype={c: str for c in ID_COLS})
+    try:
+        df = pd.read_csv(uploaded, dtype={c: str for c in ID_COLS}, encoding="utf-8")
+    except UnicodeDecodeError:
+        uploaded.seek(0)
+        df = pd.read_csv(uploaded, dtype={c: str for c in ID_COLS}, encoding="latin-1")
 except Exception as e:
     st.error(f"Could not read CSV: {e}")
     st.stop()
