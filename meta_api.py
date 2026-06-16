@@ -36,7 +36,10 @@ def get_ig_accounts(access_token, facebook_page_id, ad_account_id):
                              "fields": "instagram_business_account"},
                      verify=False)
     if r.status_code == 200:
-        ig_id = r.json().get("instagram_business_account", {}).get("id")
+        try:
+            ig_id = r.json().get("instagram_business_account", {}).get("id")
+        except Exception:
+            ig_id = None
         if ig_id:
             ig_ids.append(ig_id)
     return ig_ids
@@ -51,7 +54,10 @@ def _fetch_eligibility(token, ig_account_id, ad_code):
         "ad_code": ad_code,
     }
     r = requests.get(url, params=params, verify=False)
-    d = r.json()
+    try:
+        d = r.json()
+    except Exception:
+        return None, f"{r.status_code}: non-JSON response — {r.text[:300]}", False
     if r.status_code == 200:
         data = d.get("data", [])
         if data:
@@ -71,7 +77,10 @@ def _upload_video(token, ad_account_id, media_id, ad_code):
         "is_partnership_ad": True,
     }
     r = requests.post(url, params=params, verify=False)
-    d = r.json()
+    try:
+        d = r.json()
+    except Exception:
+        return None, f"advideos {r.status_code}: non-JSON response — {r.text[:300]}"
     if r.status_code == 200 and "id" in d:
         return d["id"], None
     err = d.get("error", {})
@@ -88,7 +97,10 @@ def _create_ad(token, ad_account_id, ad_name, adset_id, creative_id):
         "creative":  json.dumps({"creative_id": creative_id}),
     }
     r = requests.post(url, params=params, verify=False)
-    d = r.json()
+    try:
+        d = r.json()
+    except Exception:
+        return None, f"ads {r.status_code}: non-JSON response — {r.text[:300]}"
     if r.status_code == 200 and "id" in d:
         return d["id"], None
     err = d.get("error", {})
@@ -104,7 +116,10 @@ def _try_creative(label, token, ad_account_id, params):
     url = f"{GRAPH}/v23.0/act_{ad_account_id}/adcreatives"
     params["access_token"] = token
     r = requests.post(url, params=params, verify=False)
-    d = r.json()
+    try:
+        d = r.json()
+    except Exception:
+        return None, f"[{label}] {r.status_code}: non-JSON response — {r.text[:300]}"
     if r.status_code == 200 and "id" in d:
         return d["id"], None
     err = d.get("error", {})
