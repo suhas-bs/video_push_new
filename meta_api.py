@@ -1,17 +1,12 @@
 """
-meta_api.py — Meta Graph API helpers  v11
-Changes from v10:
-  - PATH 2: after uploading the video, first try object_story_spec + video_id
-    (partnership context already embedded in video via is_partnership_ad=True).
-    The old instagram_actor_id + instagram_boost_post_access_token loop is kept
-    as a fallback but that structure requires the actor IG to be connected to the
-    ad account, which fails for external creators.
+meta_api.py — Meta Graph API helpers  v12
+PATH 2 primary: object_story_spec + page_id + video_id (partnership context in video).
 """
 import json, re, requests, urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 GRAPH   = "https://graph.facebook.com"
-VERSION = "v11"
+VERSION = "v12"
 
 _PERMISSION_CODES = {3, 10, 200}
 
@@ -53,7 +48,7 @@ def _fetch_eligibility(token, ig_account_id, ad_code):
     try:
         d = r.json()
     except Exception:
-        return None, f"{r.status_code}: non-JSON response — {r.text[:300]}", False
+        return None, f"{r.status_code}: non-JSON — {r.text[:300]}", False
     if r.status_code == 200:
         data = d.get("data", [])
         if data:
@@ -126,7 +121,6 @@ def _try_creative(label, token, ad_account_id, params):
 
 
 def _build_cta(cta_type, install_link, landing_link):
-    """Returns a dict (for embedding in object_story_spec) and a JSON string (for top-level params)."""
     d = {"type": cta_type, "value": {"link": install_link, "app_link": landing_link}}
     return d, json.dumps(d)
 
@@ -156,7 +150,7 @@ def process_row(row, config):
     token   = config["access_token"]
     acct    = _clean_id(config["ad_account_id"])
     fb_page = config["facebook_page_id"]
-    ig_acct = config["ig_account_id"]   # brand IG (e.g. Flipkart Minutes)
+    ig_acct = config["ig_account_id"]
 
     ad_code      = str(row.get("ad_code", "")).strip() or None
     cta_type     = str(row.get("cta_type", "SHOP_NOW")).strip()
@@ -181,8 +175,6 @@ def process_row(row, config):
 
     # ══════════════════════════════════════════════════════════════════════════
     # PATH 1 — creator_ig_account_id in CSV
-    #   instagram_actor_id (creator) + instagram_boost_post_access_token
-    #   No special permissions. Proved working in v6.
     # ══════════════════════════════════════════════════════════════════════════
     if creator_ig:
         params = {
@@ -205,10 +197,7 @@ def process_row(row, config):
             all_errors.append(err)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # PATH 2 — Full eligibility flow
-    #   Gets media_id → uploads video (with partnership context embedded) →
-    #   creates creative via object_story_spec + video_id  ← PRIMARY
-    #   Falls back to actor-loop and branded_content approaches.
+    # PATH 2 — Eligibility flow → upload video → create creative
     # ══════════════════════════════════════════════════════════════════════════
     media_result, elig_err, is_perm_err = _fetch_eligibility(token, ig_acct, ad_code)
 
@@ -220,20 +209,20 @@ def process_row(row, config):
             return result
 
         media_id = media_result.get("id")
-        owner_ig = media_result.get("owner_id")  # creator's IG from eligibility
+        owner_ig = media_result.get("owner_id")
 
         if media_id:
             video_id, upload_err = _upload_video(token, acct, media_id, ad_code)
             result["video_id"] = video_id
 
-            # ── PRIMARY: object_story_spec using the uploaded video_id ──────
-            # The video was uploaded with is_partnership_ad=True + partnership_ad_ad_code,
-            # so the partnership attribution is already embedded. No instagram_actor_id
-            # constraint from the BCA token — brand IG just needs to be linked to the ad account.
+            # ── PRIMARY: object_story_spec + page_id + video_id ──────────────
+            # page_id is required by Meta. Video carries partnership context.
+            # instagram_actor_id = brand IG (must be linked to the ad account).
             if video_id:
                 params = {
                     "name": ad_name,
                     "object_story_spec": json.dumps({
+                        "page_id":            fb_page,
                         "instagram_actor_id": ig_acct,
                         "video_data": {
                             "video_id":       video_id,
@@ -256,7 +245,7 @@ def process_row(row, config):
             elif upload_err:
                 all_errors.append(f"Upload: {upload_err}")
 
-            # ── FALLBACK: actor-loop (old approach, needs creator IG on account) ──
+            # ── FALLBACK: actor-loop ──────────────────────────────────────────
             for actor in ([owner_ig] if owner_ig else []) + [ig_acct]:
                 params = {
                     "name":                              ad_name,
@@ -277,14 +266,14 @@ def process_row(row, config):
                     break
                 all_errors.append(err)
 
-            # ── FALLBACK: branded_content structure ──────────────────────────
+            # ── FALLBACK: branded_content structure ───────────────────────────
             params = {
-                "name":                         ad_name,
-                "object_id":                    fb_page,
-                "facebook_branded_content":     json.dumps({"sponsor_page_id": int(fb_page)}),
-                "instagram_branded_content":    json.dumps({"sponsor_id": int(ig_acct)}),
-                "branded_content":              json.dumps({"instagram_boost_post_access_token": ad_code}),
-                "call_to_action":               cta_json,
+                "name":                      ad_name,
+                "object_id":                 fb_page,
+                "facebook_branded_content":  json.dumps({"sponsor_page_id": int(fb_page)}),
+                "instagram_branded_content": json.dumps({"sponsor_id": int(ig_acct)}),
+                "branded_content":           json.dumps({"instagram_boost_post_access_token": ad_code}),
+                "call_to_action":            cta_json,
                 **pp,
             }
             cid, err = _try_creative("elig-branded", token, acct, params)
@@ -303,7 +292,7 @@ def process_row(row, config):
         all_errors.append(f"Eligibility: {elig_err}")
 
     # ══════════════════════════════════════════════════════════════════════════
-    # PATH 3 — Re-try ad creation with existing creative, or direct branded_content
+    # PATH 3 — Retry ad with existing creative, or direct branded_content
     # ══════════════════════════════════════════════════════════════════════════
     existing_cid = result.get("creative_id")
     if existing_cid:
@@ -315,12 +304,12 @@ def process_row(row, config):
         all_errors.append(f"Ad[retry-existing-creative]: {err2}")
     else:
         params = {
-            "name":                         ad_name,
-            "object_id":                    fb_page,
-            "facebook_branded_content":     json.dumps({"sponsor_page_id": int(fb_page)}),
-            "instagram_branded_content":    json.dumps({"sponsor_id": int(ig_acct)}),
-            "branded_content":              json.dumps({"instagram_boost_post_access_token": ad_code}),
-            "call_to_action":               cta_json,
+            "name":                      ad_name,
+            "object_id":                 fb_page,
+            "facebook_branded_content":  json.dumps({"sponsor_page_id": int(fb_page)}),
+            "instagram_branded_content": json.dumps({"sponsor_id": int(ig_acct)}),
+            "branded_content":           json.dumps({"instagram_boost_post_access_token": ad_code}),
+            "call_to_action":            cta_json,
             **pp,
         }
         cid, err = _try_creative("direct-branded", token, acct, params)
